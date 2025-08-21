@@ -39,6 +39,10 @@ ishifuku/
 │       ├── ci.yml                  # CI/CDパイプライン
 │       └── release.yml             # リリース自動化
 ├── .venv/                          # Python仮想環境
+├── .coverage                       # テストカバレッジデータ
+├── .gitignore                      # Git無視ファイル
+├── .mypy_cache/                    # MyPy型チェッカーキャッシュ
+├── .pytest_cache/                  # pytestキャッシュ
 ├── docs/                           # ドキュメント
 │   └── issue/20250821/
 ├── lambda/                         # AWS Lambda関連
@@ -372,6 +376,12 @@ pip install -r requirements.txt
 pytest tests/ -v
 ```
 
+### 開発ツール
+- **pytest**: テストフレームワーク
+- **coverage**: コードカバレッジ測定
+- **mypy**: 静的型チェック（オプション）
+- **CI/CD**: GitHub Actions自動化
+
 ## ⚠️ 注意事項
 
 - ウェブスクレイピングは対象サイトの利用規約を遵守してください
@@ -389,6 +399,7 @@ pytest tests/ -v
 ### バックエンド
 - **Python 3.9+**: メイン言語
 - **pytest**: テストフレームワーク
+- **coverage.py**: コードカバレッジ測定
 - **boto3**: AWS SDK
 
 ### インフラ

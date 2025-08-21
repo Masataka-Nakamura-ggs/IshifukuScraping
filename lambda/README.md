@@ -3,13 +3,31 @@
 ## 概要
 石福金属興業の金価格スクレイピングをAWS Lambdaで実行するためのデプロイメント手順です。
 
+## ファイル構成
+
+```
+lambda/
+├── README.md                    # このファイル
+├── lambda_scrape_ishifuku.py    # Lambda関数メイン
+├── requirements.txt             # Lambda用依存関係
+├── template.yaml               # AWS SAM設定
+├── serverless.yml              # Serverless Framework設定
+├── deploy.sh                   # Serverless用デプロイスクリプト
+├── sam_deploy.sh              # SAM用デプロイスクリプト
+├── test_lambda.py             # 基本テスト
+├── test_lambda_improved.py    # 改良版テスト（推奨）
+└── __pycache__/               # Pythonキャッシュ
+```
+
 ## 前提条件
 
 ### 必要なツール
 - AWS CLI v2
 - AWS SAM CLI
-- Docker
+- Docker（オプション: SAMローカルテスト用のみ）
 - Python 3.9+
+
+> **注意**: このプロジェクトはPure Pythonライブラリのみを使用するため、基本的にDockerは不要です。DockerはAWS SAMでローカル環境でのLambdaテスト（`sam local start-api`など）を行う場合のみ必要になります。
 
 ### インストール手順
 
@@ -86,6 +104,9 @@ aws lambda invoke --function-name ishifuku-scraper-dev response.json
 
 # ローカルテスト
 python test_lambda.py
+
+# 改良版テスト（モック + 実スクレイピング）
+python test_lambda_improved.py
 ```
 
 ### ログ確認
@@ -134,7 +155,11 @@ aws s3 cp s3://ishifuku-gold-data-dev/gold_prices_$(date +%Y%m%d).csv ./
 
 1. **ローカルテスト**
    ```bash
+   # 基本テスト
    python lambda/test_lambda.py
+   
+   # 改良版テスト（推奨）
+   python lambda/test_lambda_improved.py
    ```
 
 2. **CloudWatch Insights**
