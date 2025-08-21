@@ -8,14 +8,13 @@ import csv
 import datetime
 import os
 import shutil
-
-# テスト対象のモジュールをインポート
 import sys
 import tempfile
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import patch
 
 import pytest
 
+# テスト対象のモジュールをインポート
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scrape_ishifuku import (
     create_empty_csv,
