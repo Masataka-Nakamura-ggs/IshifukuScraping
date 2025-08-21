@@ -16,10 +16,10 @@ import logging
 import os
 import re
 import time
-from typing import Optional, Tuple, List, Union
-from bs4 import BeautifulSoup, Tag
+from typing import List, Optional, Tuple, Union
 
 import requests
+from bs4 import BeautifulSoup, Tag
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
