@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 石福金属興業 金価格スクレイピング Lambda関数
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: デプロイメント環境
+  
+  S3BucketName:
+    Type: String
+    Default: ishifuku-gold-data
+    Description: CSVファイルを保存するS3バケット名
+    
+  ChromeLayerArn:
+    Type: String
+    Default: arn:aws:lambda:ap-northeast-1:764866452798:layer:chrome-aws-lambda:31
+    Description: Chrome Lambda Layer ARN
+
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 1024
+    Runtime: python3.9
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+
+Resources:
+  # Lambda関数
+  GoldScrapingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "ishifuku-scraper-${Environment}"
+      CodeUri: .
+      Handler: lambda_scrape_ishifuku.lambda_handler
+      Description: "石福金属興業から金価格を取得するスクレイピング関数"
+      Layers:
+        - !Ref ChromeLayerArn
+      Environment:
+        Variables:
+          S3_BUCKET: !Sub "${S3BucketName}-${Environment}"
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Sub "${S3BucketName}-${Environment}"
+        - S3ReadPolicy:
+            BucketName: !Sub "${S3BucketName}-${Environment}"
+        - CloudWatchLogsFullAccess
+      Events:
+        # 毎日午前9時（JST）に実行
+        ScheduledScraping:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0 * * ? *)  # UTC 00:00 = JST 09:00
+            Description: "毎日午前9時に金価格をスクレイピング"
+            Enabled: true
+        # API Gateway経由での手動実行
+        ApiScraping:
+          Type: Api
+          Properties:
+            Path: /scrape
+            Method: get
+            RestApiId: !Ref ScrapingApi
+
+  # API Gateway
+  ScrapingApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub "ishifuku-scraping-api-${Environment}"
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'content-type'"
+        AllowOrigin: "'*'"
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: !Sub "Ishifuku Scraping API - ${Environment}"
+          version: '1.0'
+        paths:
+          /scrape:
+            get:
+              summary: "金価格のスクレイピングを実行"
+              produces:
+                - application/json
+              responses:
+                200:
+                  description: "スクレイピング成功"
+                500:
+                  description: "スクレイピング失敗"
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GoldScrapingFunction.Arn}/invocations"
+
+  # S3バケット
+  GoldDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${S3BucketName}-${Environment}"
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          - Id: TransitionToIA
+            Status: Enabled
+            TransitionInDays: 30
+            StorageClass: STANDARD_IA
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        CloudWatchConfigurations:
+          - Event: s3:ObjectCreated:*
+            CloudWatchConfiguration:
+              LogGroupName: !Ref ScrapingLogGroup
+
+  # CloudWatch Logs
+  ScrapingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/ishifuku-scraper-${Environment}"
+      RetentionInDays: 14
+
+  # CloudWatch Alarm（エラー監視）
+  ScrapingErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "ishifuku-scraper-errors-${Environment}"
+      AlarmDescription: "スクレイピング関数のエラー監視"
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref GoldScrapingFunction
+      TreatMissingData: notBreaching
+
+Outputs:
+  GoldScrapingFunctionArn:
+    Description: "Lambda関数のARN"
+    Value: !GetAtt GoldScrapingFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-function-arn"
+      
+  S3BucketName:
+    Description: "CSVファイルを保存するS3バケット名"
+    Value: !Ref GoldDataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-bucket-name"
+      
+  ApiUrl:
+    Description: "手動実行用のAPI URL"
+    Value: !Sub "https://${ScrapingApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/scrape"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-url"
+      
+  LogGroupName:
+    Description: "CloudWatch ロググループ名"
+    Value: !Ref ScrapingLogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-log-group"

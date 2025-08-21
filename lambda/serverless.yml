@@ -1,0 +1,115 @@
+service: ishifuku-gold-scraper
+
+provider:
+  name: aws
+  runtime: python3.9
+  region: ap-northeast-1
+  stage: ${opt:stage, 'dev'}
+  timeout: 300  # 5分
+  memorySize: 1024  # 1GB (Seleniumには多めのメモリが必要)
+  
+  environment:
+    S3_BUCKET: ${self:custom.bucketName}
+    LOG_LEVEL: INFO
+    
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:PutObject
+        - s3:GetObject
+        - s3:ListBucket
+      Resource: 
+        - "arn:aws:s3:::${self:custom.bucketName}"
+        - "arn:aws:s3:::${self:custom.bucketName}/*"
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: "arn:aws:logs:*:*:*"
+
+functions:
+  scrapeGoldPrice:
+    handler: lambda_scrape_ishifuku.lambda_handler
+    description: "石福金属興業から金価格を取得するスクレイピング関数"
+    timeout: 300
+    memorySize: 1024
+    layers:
+      - ${self:custom.chromiumLayerArn}
+    events:
+      # 毎日午前9時に実行（JST）
+      - schedule:
+          rate: cron(0 0 * * ? *)  # UTC 00:00 = JST 09:00
+          enabled: true
+          input:
+            source: "scheduled"
+      # 手動実行用のAPIエンドポイント
+      - http:
+          path: scrape
+          method: get
+          cors: true
+
+  # テスト用関数（手動実行）
+  testScrape:
+    handler: lambda_scrape_ishifuku.lambda_handler
+    description: "テスト用のスクレイピング関数"
+    timeout: 300
+    memorySize: 1024
+    layers:
+      - ${self:custom.chromiumLayerArn}
+
+custom:
+  bucketName: ishifuku-gold-data-${self:provider.stage}
+  # Chrome Lambda Layer ARN (地域に応じて変更)
+  chromiumLayerArn: arn:aws:lambda:ap-northeast-1:764866452798:layer:chrome-aws-lambda:31
+
+package:
+  patterns:
+    - '!node_modules/**'
+    - '!.git/**'
+    - '!.pytest_cache/**'
+    - '!tests/**'
+    - '!docs/**'
+    - '!logs/**'
+    - '!result/**'
+    - '!.venv/**'
+
+resources:
+  Resources:
+    # S3バケット
+    GoldDataBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketName}
+        VersioningConfiguration:
+          Status: Enabled
+        LifecycleConfiguration:
+          Rules:
+            - Id: DeleteOldVersions
+              Status: Enabled
+              NoncurrentVersionExpirationInDays: 30
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+          
+    # CloudWatch Logs Group
+    ScrapingLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-${self:provider.stage}-scrapeGoldPrice
+        RetentionInDays: 14
+
+  Outputs:
+    BucketName:
+      Description: "S3 bucket name for storing CSV files"
+      Value: ${self:custom.bucketName}
+    ApiEndpoint:
+      Description: "API Gateway endpoint for manual execution"
+      Value:
+        Fn::Join:
+          - ""
+          - - "https://"
+            - Ref: ApiGatewayRestApi
+            - ".execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}/scrape"
