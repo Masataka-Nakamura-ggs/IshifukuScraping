@@ -280,7 +280,9 @@ def scrape_gold_price() -> int:
             driver.quit()
 
 
-def save_to_csv(date_str: str, gold_price: int, datetime_str: str, filename: str) -> None:
+def save_to_csv(
+    date_str: str, gold_price: int, datetime_str: str, filename: str
+) -> None:
     """CSVファイルに価格データを保存"""
     try:
         # resultフォルダが存在しない場合は作成

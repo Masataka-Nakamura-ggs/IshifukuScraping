@@ -77,9 +77,10 @@ def test_lambda_with_mock():
         )
 
         # スクレイピング関数をモック
-        with patch(
-            "lambda_scrape_ishifuku.scrape_gold_price_selenium"
-        ) as mock_scrape, patch("lambda_scrape_ishifuku.save_to_s3") as mock_s3:
+        with (
+            patch("lambda_scrape_ishifuku.scrape_gold_price_selenium") as mock_scrape,
+            patch("lambda_scrape_ishifuku.save_to_s3") as mock_s3,
+        ):
 
             # モック設定
             mock_scrape.return_value = mock_price_data
