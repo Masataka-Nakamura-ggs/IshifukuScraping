@@ -14,6 +14,7 @@ h11==0.14.0
 idna==3.10
 jmespath==1.0.1
 mpmath==1.3.0
+mypy==1.17.1
 mypy_extensions==1.1.0
 outcome==1.3.0.post0
 packaging==25.0
@@ -39,6 +40,9 @@ starlette==0.46.1
 sympy==1.14.0
 trio==0.30.0
 trio-websocket==0.12.2
+types-beautifulsoup4==4.12.0.20250516
+types-html5lib==1.1.11.20250809
+types-requests==2.32.4.20250809
 typing_extensions==4.14.1
 tzdata==2025.2
 urllib3==2.5.0

@@ -16,9 +16,10 @@ import logging
 import os
 import re
 import time
+from typing import Optional, Tuple, List, Union
+from bs4 import BeautifulSoup, Tag
 
 import requests
-from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -28,7 +29,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
 
-def setup_logging():
+def setup_logging() -> None:
     """ログ設定を初期化（日時ローテーション）"""
     # logsフォルダが存在しない場合は作成
     os.makedirs("logs", exist_ok=True)
@@ -66,7 +67,7 @@ def setup_logging():
     logger.addHandler(info_handler)
 
 
-def get_current_datetime():
+def get_current_datetime() -> Tuple[str, str, str]:
     """現在の日時を取得"""
     now = datetime.datetime.now()
     date_str = now.strftime("%Y-%m-%d")
@@ -75,7 +76,7 @@ def get_current_datetime():
     return date_str, datetime_str, date_for_filename
 
 
-def create_empty_csv(filename):
+def create_empty_csv(filename: str) -> None:
     """空のCSVファイルを作成"""
     try:
         # resultフォルダが存在しない場合は作成
@@ -90,7 +91,7 @@ def create_empty_csv(filename):
         logging.error(f"空ファイル作成エラー: {e}")
 
 
-def extract_price_from_text(price_text):
+def extract_price_from_text(price_text: Optional[str]) -> Optional[int]:
     """価格テキストから数値を抽出"""
     if not price_text:
         return None
@@ -113,7 +114,7 @@ def extract_price_from_text(price_text):
     return None
 
 
-def scrape_gold_price():
+def scrape_gold_price() -> int:
     """石福金属興業から金の価格を取得（Selenium使用）"""
     driver = None
     try:
@@ -251,9 +252,10 @@ def scrape_gold_price():
         if not gold_price:
             # デバッグ情報を出力
             print("=== デバッグ情報 ===")
+            title_element = soup.find("title")
             print(
                 "ページタイトル:",
-                soup.find("title").get_text() if soup.find("title") else "なし",
+                title_element.get_text() if title_element else "なし",
             )
 
             tables = soup.find_all("table")
@@ -278,7 +280,7 @@ def scrape_gold_price():
             driver.quit()
 
 
-def save_to_csv(date_str, gold_price, datetime_str, filename):
+def save_to_csv(date_str: str, gold_price: int, datetime_str: str, filename: str) -> None:
     """CSVファイルに価格データを保存"""
     try:
         # resultフォルダが存在しない場合は作成
@@ -294,7 +296,7 @@ def save_to_csv(date_str, gold_price, datetime_str, filename):
         raise Exception(f"CSV保存エラー: {e}")
 
 
-def main():
+def main() -> None:
     """メイン処理"""
     # ログ設定を初期化
     setup_logging()
