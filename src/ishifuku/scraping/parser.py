@@ -11,6 +11,7 @@ from typing import List, Optional
 from bs4 import BeautifulSoup
 
 from ..config import ScrapingConfig
+from ..utils import log_error
 
 
 class HTMLParser:
@@ -89,8 +90,8 @@ class HTMLParser:
                         href_val = links[0].get("href")
                         return str(href_val) if href_val else None
 
-        except Exception:
-            pass
+        except Exception as ex_inner:
+            log_error(f"要素の取得に失敗しました: {ex_inner}", ex_inner)
 
         return None
 

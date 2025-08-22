@@ -19,6 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
 from ..config import WebDriverConfig
+from ..utils import log_error
 
 
 class WebDriverFactory(ABC):
@@ -227,8 +228,11 @@ class WebDriverManager:
             if elements:
                 href = elements[0].get_attribute("href")
                 return str(href) if href else None
-        except Exception:
-            pass
+        except Exception as ex_inner:
+            log_error(
+                f"XPathで要素を検索してhref属性を取得するのに失敗しました: {ex_inner}",
+                ex_inner,
+            )
         return None
 
     def close(self) -> None:

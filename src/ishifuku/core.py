@@ -141,8 +141,11 @@ class GoldPriceScraper:
 
                     filename = self.config.storage.get_csv_filename(date_for_filename)
                     create_empty_csv(filename)
-            except Exception:
-                pass  # 空ファイル作成もエラーの場合は無視
+            except Exception as ex_inner:
+                log_error(
+                    f"フォールバックの空ファイル作成に失敗しました: {ex_inner}",
+                    ex_inner,
+                )
 
             result = {
                 "success": False,
