@@ -3,7 +3,6 @@
 """
 AWS Lambda向けメインスクリプト
 
-AWS Lambda環境での実行に最適化されたスクリプト
 """
 
 import json
