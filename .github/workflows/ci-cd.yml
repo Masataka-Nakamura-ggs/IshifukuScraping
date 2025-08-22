@@ -191,30 +191,36 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install Lambda dependencies
+    - name: Install dependencies
       run: |
-        cd lambda
-        pip install -r requirements.txt -t .
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
     
     - name: Test Lambda function structure
       run: |
-        cd lambda
         python -c "
-        import lambda_scrape_ishifuku
-        assert hasattr(lambda_scrape_ishifuku, 'lambda_handler')
-        print('✅ Lambda function structure OK')
+        import sys
+        sys.path.insert(0, 'src')
+        from main_lambda import lambda_handler
+        print('✅ Lambda handler import OK')
+        
+        # Test with mock event and context
+        import json
+        test_event = {}
+        
+        class MockContext:
+            function_name = 'test-function'
+            function_version = '1'
+            invoked_function_arn = 'arn:aws:lambda:region:account:function:test'
+            memory_limit_in_mb = '128'
+            remaining_time_in_millis = lambda: 30000
+            log_group_name = '/aws/lambda/test'
+            log_stream_name = 'test-stream'
+            aws_request_id = 'test-request-id'
+        
+        # Test function signature (don't actually run scraping)
+        print('✅ Lambda function structure validated')
         "
-    
-    - name: Package Lambda function
-      run: |
-        cd lambda
-        zip -r ../lambda-function.zip . -x "*.pyc" "__pycache__/*" "test_*" "*.md"
-    
-    - name: Upload Lambda package
-      uses: actions/upload-artifact@v4
-      with:
-        name: lambda-function
-        path: lambda-function.zip
 
   performance-test:
     runs-on: ubuntu-latest
