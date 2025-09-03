@@ -11,18 +11,14 @@
 ```
 lambda/
 ├── README.md                              # このファイル
-├── lambda_scrape_ishifuku_legacy.py       # レガシー: Selenium + Chrome Layer 版
-├── requirements.txt                       # Lambda用依存関係（legacy向け）
+├── requirements.txt                       # Lambda用依存関係
 ├── template.yaml                          # AWS SAM設定
 ├── serverless.yml                         # Serverless Framework設定
 ├── deploy.sh                              # Serverless用デプロイスクリプト
 ├── sam_deploy.sh                          # SAM用デプロイスクリプト
-├── test_lambda.py                         # 基本テスト（legacy向け）
-├── test_lambda_improved.py                # 改良版テスト（legacy向け）
 └── __pycache__/                           # Pythonキャッシュ
-
 src/
-└── main_lambda.py                         # 推奨: Lambdaハンドラー本体（`handler: main_lambda.lambda_handler`）
+└── main_lambda.py                         # Lambdaハンドラー本体（`handler: main_lambda.lambda_handler`）
 ```
 
 ## 前提条件

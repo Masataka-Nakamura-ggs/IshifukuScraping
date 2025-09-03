@@ -1,7 +1,17 @@
-# AWS Lambda用依存関係
-# Core dependencies
-beautifulsoup4==4.12.2
-selenium==4.15.2
-boto3==1.34.0
+# AWS Lambda 用依存関係 (Python 3.9)
+# NOTE: boto3/botocore は Lambda ランタイムに同梱のため不要
 
-# Lambda Layer用のChrome/ChromeDriverは別途用意
+# Core
+beautifulsoup4==4.13.4
+selenium==4.15.0
+
+# Lambda では webdriver_manager は直接は使わないが、
+# driver モジュールのインポート時に参照されるため同梱する
+webdriver-manager==4.0.2
+
+# webdriver-manager の依存（明示ピン止めで再現性確保）
+requests==2.32.5
+python-dotenv==1.0.1
+packaging==25.0
+
+# Chrome/ChromeDriver は Lambda Layer で提供
