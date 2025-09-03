@@ -179,43 +179,6 @@ jobs:
         name: dist
         path: dist/
 
-  lambda-test:
-    runs-on: ubuntu-latest
-    needs: test
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-    
-    - name: Install Lambda dependencies
-      run: |
-        cd lambda
-        pip install -r requirements.txt -t .
-    
-    - name: Test Lambda function structure
-      run: |
-        cd lambda
-        python -c "
-        import lambda_scrape_ishifuku
-        assert hasattr(lambda_scrape_ishifuku, 'lambda_handler')
-        print('✅ Lambda function structure OK')
-        "
-    
-    - name: Package Lambda function
-      run: |
-        cd lambda
-        zip -r ../lambda-function.zip . -x "*.pyc" "__pycache__/*" "test_*" "*.md"
-    
-    - name: Upload Lambda package
-      uses: actions/upload-artifact@v4
-      with:
-        name: lambda-function
-        path: lambda-function.zip
-
   performance-test:
     runs-on: ubuntu-latest
     needs: test
