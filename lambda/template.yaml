@@ -34,8 +34,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub "ishifuku-scraper-${Environment}"
-      CodeUri: .
-      Handler: lambda_scrape_ishifuku.lambda_handler
+  CodeUri: ../src
+  Handler: main_lambda.lambda_handler
       Description: "石福金属興業から金価格を取得するスクレイピング関数"
       Layers:
         - !Ref ChromeLayerArn

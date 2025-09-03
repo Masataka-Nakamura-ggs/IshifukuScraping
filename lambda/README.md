@@ -3,20 +3,26 @@
 ## 概要
 石福金属興業の金価格スクレイピングをAWS Lambdaで実行するためのデプロイメント手順です。
 
+重要: 現在の推奨Lambdaハンドラーは `src/main_lambda.py` の `lambda_handler` です。
+従来の Selenium + Chrome Layer 方式はレガシー扱いになりました（必要時のみ使用）。
+
 ## ファイル構成
 
 ```
 lambda/
-├── README.md                    # このファイル
-├── lambda_scrape_ishifuku.py    # Lambda関数メイン
-├── requirements.txt             # Lambda用依存関係
-├── template.yaml               # AWS SAM設定
-├── serverless.yml              # Serverless Framework設定
-├── deploy.sh                   # Serverless用デプロイスクリプト
-├── sam_deploy.sh              # SAM用デプロイスクリプト
-├── test_lambda.py             # 基本テスト
-├── test_lambda_improved.py    # 改良版テスト（推奨）
-└── __pycache__/               # Pythonキャッシュ
+├── README.md                              # このファイル
+├── lambda_scrape_ishifuku_legacy.py       # レガシー: Selenium + Chrome Layer 版
+├── requirements.txt                       # Lambda用依存関係（legacy向け）
+├── template.yaml                          # AWS SAM設定
+├── serverless.yml                         # Serverless Framework設定
+├── deploy.sh                              # Serverless用デプロイスクリプト
+├── sam_deploy.sh                          # SAM用デプロイスクリプト
+├── test_lambda.py                         # 基本テスト（legacy向け）
+├── test_lambda_improved.py                # 改良版テスト（legacy向け）
+└── __pycache__/                           # Pythonキャッシュ
+
+src/
+└── main_lambda.py                         # 推奨: Lambdaハンドラー本体（`handler: main_lambda.lambda_handler`）
 ```
 
 ## 前提条件
@@ -27,7 +33,7 @@ lambda/
 - Docker（オプション: SAMローカルテスト用のみ）
 - Python 3.9+
 
-> **注意**: このプロジェクトはPure Pythonライブラリのみを使用するため、基本的にDockerは不要です。DockerはAWS SAMでローカル環境でのLambdaテスト（`sam local start-api`など）を行う場合のみ必要になります。
+> 注意: 推奨構成（`src/main_lambda.py`）はプロジェクト内のモジュールとS3を利用します。Selenium/Chrome Layerは不要です。DockerはSAMのローカル実行時のみ必要です。
 
 ### インストール手順
 
@@ -47,12 +53,37 @@ aws configure
 
 ### 1. AWS SAMを使用（推奨）
 
+Handler 設定例（template.yaml の該当関数）:
+
+```
+Handler: src/main_lambda.lambda_handler
+Runtime: python3.12
+MemorySize: 512
+Timeout: 60
+Environment:
+   Variables:
+      S3_BUCKET: your-bucket-name
+```
+
 ```bash
 cd lambda
 ./sam_deploy.sh dev ishifuku-gold-data
 ```
 
 ### 2. Serverless Frameworkを使用
+
+`serverless.yml` の関数設定例:
+
+```
+functions:
+   scraper:
+      handler: src/main_lambda.lambda_handler
+      runtime: python3.12
+      memorySize: 512
+      timeout: 60
+      environment:
+         S3_BUCKET: ${env:S3_BUCKET}
+```
 
 ```bash
 cd lambda
@@ -75,14 +106,16 @@ npm install -g serverless
 - メモリ: 1024MB
 - 必要に応じて`template.yaml`で調整
 
-## Chrome Lambda Layer
+## Chrome Lambda Layer（LEGACY）
 
-### 使用レイヤー
+レガシー構成（`lambda/lambda_scrape_ishifuku_legacy.py`）で Selenium/Chrome を使う場合のみ必要です。
+
+使用例レイヤー ARN:
 ```
 arn:aws:lambda:ap-northeast-1:764866452798:layer:chrome-aws-lambda:31
 ```
 
-### 自前でレイヤーを作成する場合
+自前でレイヤーを作成する場合（参考）:
 ```bash
 # Chrome/ChromeDriverのダウンロードとパッケージ化
 mkdir chrome-layer
@@ -96,17 +129,18 @@ aws lambda publish-layer-version --layer-name chrome --zip-file fileb://chrome-l
 
 ### 手動実行
 ```bash
-# API Gateway経由
+# API Gateway経由（SAM）
 curl https://[API-ID].execute-api.ap-northeast-1.amazonaws.com/dev/scrape
 
-# Lambda直接実行
+# Lambda直接実行（推奨ハンドラー）
 aws lambda invoke --function-name ishifuku-scraper-dev response.json
 
-# ローカルテスト
-python test_lambda.py
+# ローカルテスト（推奨構成: `src/main_lambda.py`）
+python -c 'from src.main_lambda import lambda_handler; print(lambda_handler({}, None))'
 
-# 改良版テスト（モック + 実スクレイピング）
-python test_lambda_improved.py
+# legacyテスト（必要時のみ）
+python lambda/test_lambda.py
+python lambda/test_lambda_improved.py
 ```
 
 ### ログ確認
@@ -133,11 +167,11 @@ aws s3 cp s3://ishifuku-gold-data-dev/gold_prices_$(date +%Y%m%d).csv ./
 
 ### よくある問題
 
-1. **Chrome Layer エラー**
+1. **Chrome Layer エラー（legacy）**
    ```
    Error: Chrome binary not found
    ```
-   → Chrome Lambda Layerが正しく設定されているか確認
+   → legacy 構成を使っている場合のみ該当。推奨構成では不要。
 
 2. **タイムアウトエラー**
    ```
@@ -155,10 +189,11 @@ aws s3 cp s3://ishifuku-gold-data-dev/gold_prices_$(date +%Y%m%d).csv ./
 
 1. **ローカルテスト**
    ```bash
-   # 基本テスト
-   python lambda/test_lambda.py
+   # 推奨: 直接ハンドラーを呼び出し
+   python -c 'from src.main_lambda import lambda_handler; print(lambda_handler({}, None))'
    
-   # 改良版テスト（推奨）
+   # legacy 構成を試す場合
+   python lambda/test_lambda.py
    python lambda/test_lambda_improved.py
    ```
 
