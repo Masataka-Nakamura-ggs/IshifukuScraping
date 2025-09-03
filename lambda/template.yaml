@@ -182,14 +182,10 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
       # S3イベント通知設定
-      # 注: このCloudWatchConfigurationsという設定は標準的なS3通知のプロパティではありません。
-      #     S3イベントをCloudWatch Logsに直接送ることは一般的ではなく、この記述は意図通りに動作しない可能性があります。
-      #     (通常はSNS, SQS, Lambda, EventBridgeに通知します)
+      # S3からのイベント通知をEventBridgeに送信するよう設定
       NotificationConfiguration:
-        CloudWatchConfigurations:
-          - Event: s3:ObjectCreated:*
-            CloudWatchConfiguration:
-              LogGroupName: !Ref ScrapingLogGroup
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
 
   #----------------------------------------------------------------
   # CloudWatch Logs
@@ -205,7 +201,7 @@ Resources:
 
   #----------------------------------------------------------------
   # CloudWatch Alarm (エラー監視)
-  #----------------------------------------------------------------  
+  #----------------------------------------------------------------
   ScrapingErrorAlarm:
     # CloudWatchのアラームリソース
     Type: AWS::CloudWatch::Alarm
@@ -231,6 +227,38 @@ Resources:
           Value: !Ref GoldScrapingFunction
       # データポイントがない場合の挙動 (notBreaching = アラーム状態にしない)
       TreatMissingData: notBreaching
+
+  #----------------------------------------------------------------
+  # SNSトピック (成功通知用)
+  #----------------------------------------------------------------
+  SuccessNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub "ishifuku-scraper-success-notifications-${Environment}"
+      TopicName: !Sub "ishifuku-scraper-success-notifications-${Environment}"
+
+  #----------------------------------------------------------------
+  # EventBridgeルール (S3オブジェクト作成を検知)
+  #----------------------------------------------------------------
+  S3ObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "S3バケットへのオブジェクト作成を検知しSNSに通知するルール"
+      # イベントパターン (どのイベントを検知するかの定義)
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              # GoldDataBucketが作成するバケット名を指定
+              - !Ref GoldDataBucket
+      # ターゲット (検知したイベントをどこに送るかの定義)
+      Targets:
+        - Arn: !Ref SuccessNotificationTopic
+          Id: "SnsTarget"
 
 #================================================================================
 # アウトプットセクション

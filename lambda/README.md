@@ -1,24 +1,39 @@
-# Lambda デプロイメントガイド
+# 金価格スクレイピング Lambda - デプロイメントガイド
 
 ## 概要
-石福金属興業の金価格スクレイピングをAWS Lambdaで実行するためのデプロイメント手順です。
+石福金属興業の金価格をスクレイピングするAWS Lambda関数を、AWS SAM (Serverless Application Model) を用いてデプロイするための手順書です。
+このシステムは、SeleniumとヘッドレスChromeを使用してウェブサイトから価格情報を取得し、結果をS3バケットにCSV形式で保存します。実行はAPI Gateway経由での手動トリガー、またはEventBridgeによる定時実行が可能です。
 
-重要: 現在の推奨Lambdaハンドラーは `src/main_lambda.py` の `lambda_handler` です。
-従来の Selenium + Chrome Layer 方式はレガシー扱いになりました（必要時のみ使用）。
+## アーキテクチャ
+1. トリガー:
+    - API Gateway: 手動で即時実行するためのHTTP GETエンドポイントを提供します。
+    - Amazon EventBridge: cron式に基づき、毎日定時にLambda関数を自動実行します。
+1. 実行:
+    - AWS Lambda: PythonランタイムでSeleniumを実行し、スクレイピング処理を行います。ChromeブラウザはLambda Layerを通じて提供されます。
+1. ストレージ:
+    - Amazon S3: スクレイピング結果のCSVファイルが保存されます。
+1. 監視と通知:
+    - Amazon CloudWatch: Lambda関数のログを収集し、エラー発生を監視します。
+    - Amazon EventBridge / SNS: S3へのファイル保存成功をトリガーに、SNSトピックへ通知を発行します。
 
 ## ファイル構成
 
 ```
 lambda/
-├── README.md                              # このファイル
-├── requirements.txt                       # Lambda用依存関係
-├── template.yaml                          # AWS SAM設定
-├── serverless.yml                         # Serverless Framework設定
-├── deploy.sh                              # Serverless用デプロイスクリプト
-├── sam_deploy.sh                          # SAM用デプロイスクリプト
-└── __pycache__/                           # Pythonキャッシュ
+├── README.md                 # このファイル
+├── requirements.txt          # Lambda用依存関係
+├── template.yaml             # AWS SAM設定
+└── sam_deploy.sh             # SAM用デプロイスクリプト
 src/
-└── main_lambda.py                         # Lambdaハンドラー本体（`handler: main_lambda.lambda_handler`）
+   ├── ishifuku/             # メインのソースコードパッケージ
+   │   ├── __init__.py
+   │   ├── config.py         # 設定管理
+   │   ├── core.py           # スクレイピングのコアロジック
+   │   ├── optimized_core.py # キャッシュ機能付きのコアロジック (オプション)
+   │   ├── scraping/         # WebDriver, Parser, Extractorなど
+   │   ├── storage/          # S3/CSVへの保存ロジック
+   │   └── utils/            # 日時処理、ロギングなど
+   └── main_lambda.py        # Lambda関数のエントリーポイント
 ```
 
 ## 前提条件
@@ -29,16 +44,13 @@ src/
 - Docker（オプション: SAMローカルテスト用のみ）
 - Python 3.9+
 
-> 注意: 推奨構成（`src/main_lambda.py`）はプロジェクト内のモジュールとS3を利用します。Selenium/Chrome Layerは不要です。DockerはSAMのローカル実行時のみ必要です。
-
 ### インストール手順
-
 ```bash
 # AWS CLI
-curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
-sudo installer -pkg AWSCLIV2.pkg -target /
+brew install awscli
 
 # AWS SAM CLI
+brew tap aws/tap
 brew install aws-sam-cli
 
 # AWS認証設定
@@ -46,97 +58,54 @@ aws configure
 ```
 
 ## デプロイメント方法
-
-### 1. AWS SAMを使用（推奨）
-
-Handler 設定例（template.yaml の該当関数）:
-
+`lambda`ディレクトリに移動し、デプロイスクリプトを実行します。
 ```
-Handler: src/main_lambda.lambda_handler
-Runtime: python3.12
-MemorySize: 512
-Timeout: 60
-Environment:
-   Variables:
-      S3_BUCKET: your-bucket-name
+cd lambda
+./sam_deploy.sh [環境名] [S3バケットのベース名]
 ```
-
+#### 実行例
 ```bash
 cd lambda
 ./sam_deploy.sh dev ishifuku-gold-data
 ```
-
-### 2. Serverless Frameworkを使用
-
-`serverless.yml` の関数設定例:
-
-```
-functions:
-   scraper:
-      handler: src/main_lambda.lambda_handler
-      runtime: python3.12
-      memorySize: 512
-      timeout: 60
-      environment:
-         S3_BUCKET: ${env:S3_BUCKET}
-```
-
-```bash
-cd lambda
-npm install -g serverless
-./deploy.sh dev
-```
+#### 引数
+1. `[環境名]` (省略可, デフォルト: ishifuku-gold-data)
+    - デプロイ環境 (dev, staging, prodなど) を指定します。リソース名の一部として使用されます。
+1. `[S3バケットのベース名]` (必須ではない、デフォルト: `ishifuku-gold-data`)
+    - データを保存するS3バケットの基本名を指定します。
+    - 【重要】S3バケット名は全世界で一意である必要があるため、自分だけのユニークな名前を指定してください。 (例: my-gold-data-20250903)
 
 ## 設定項目
-
-### 環境変数
-- `S3_BUCKET`: CSVファイル保存先バケット
+設定は主にtemplate.yamlとsrc/ishifuku/config.pyで管理されています。
+### 環境変数 (template.yamlで定義)
+- `S3_BUCKET_NAME`: CSVファイルの保存先S3バケット名。スクリプトにより動的に設定されます。
 - `LOG_LEVEL`: ログレベル（INFO/DEBUG/ERROR）
 
-### スケジュール
+### スケジュール (template.yamlで定義)
 - デフォルト: 毎日UTC 00:00（JST 09:00）実行
 - `template.yaml`の`ScheduledScraping`で変更可能
 
-### タイムアウト・メモリ
+### タイムアウト・メモリ(template.yamlで定義)
 - タイムアウト: 300秒（5分）
 - メモリ: 1024MB
-- 必要に応じて`template.yaml`で調整
 
-## Chrome Lambda Layer（LEGACY）
-
-レガシー構成（`lambda/lambda_scrape_ishifuku_legacy.py`）で Selenium/Chrome を使う場合のみ必要です。
-
-使用例レイヤー ARN:
-```
-arn:aws:lambda:ap-northeast-1:764866452798:layer:chrome-aws-lambda:31
-```
-
-自前でレイヤーを作成する場合（参考）:
-```bash
-# Chrome/ChromeDriverのダウンロードとパッケージ化
-mkdir chrome-layer
-cd chrome-layer
-# Chromeのダウンロード...
-zip -r chrome-layer.zip .
-aws lambda publish-layer-version --layer-name chrome --zip-file fileb://chrome-layer.zip
-```
+### Chrome Lambda Layer (template.yamlで定義)
+- このプロジェクトはスクレイピングにSeleniumとChromeを使用するため、Chrome Lambda Layerが必須です。
+- template.yamlのChromeLayerArnパラメータで、デプロイするリージョンに合ったレイヤーのARNを指定してください。
 
 ## 実行・テスト
-
+デプロイ完了後、sam_deploy.shの出力に表示されるURLやARNを使用してテストできます。
 ### 手動実行
 ```bash
-# API Gateway経由（SAM）
+# デプロイ完了時に表示されるApiUrlにリクエストを送る
+curl [表示されたApiUrl]
+```
+```bash
+# API Gateway経由
 curl https://[API-ID].execute-api.ap-northeast-1.amazonaws.com/dev/scrape
 
 # Lambda直接実行（推奨ハンドラー）
 aws lambda invoke --function-name ishifuku-scraper-dev response.json
-
-# ローカルテスト（推奨構成: `src/main_lambda.py`）
-python -c 'from src.main_lambda import lambda_handler; print(lambda_handler({}, None))'
-
-# legacyテスト（必要時のみ）
-python lambda/test_lambda.py
-python lambda/test_lambda_improved.py
 ```
 
 ### ログ確認
@@ -159,71 +128,6 @@ aws s3 ls s3://ishifuku-gold-data-dev/ --recursive
 aws s3 cp s3://ishifuku-gold-data-dev/gold_prices_$(date +%Y%m%d).csv ./
 ```
 
-## トラブルシューティング
-
-### よくある問題
-
-1. **Chrome Layer エラー（legacy）**
-   ```
-   Error: Chrome binary not found
-   ```
-   → legacy 構成を使っている場合のみ該当。推奨構成では不要。
-
-2. **タイムアウトエラー**
-   ```
-   Task timed out after 300.00 seconds
-   ```
-   → メモリサイズを増加またはタイムアウト時間を延長
-
-3. **S3アクセスエラー**
-   ```
-   AccessDenied: Access Denied
-   ```
-   → IAM権限とバケット名を確認
-
-### デバッグ方法
-
-1. **ローカルテスト**
-   ```bash
-   # 推奨: 直接ハンドラーを呼び出し
-   python -c 'from src.main_lambda import lambda_handler; print(lambda_handler({}, None))'
-   
-   # legacy 構成を試す場合
-   python lambda/test_lambda.py
-   python lambda/test_lambda_improved.py
-   ```
-
-2. **CloudWatch Insights**
-   ```sql
-   fields @timestamp, @message
-   | filter @message like /ERROR/
-   | sort @timestamp desc
-   | limit 20
-   ```
-
-3. **X-Ray トレーシング**
-   ```bash
-   # template.yamlに追加
-   Tracing: Active
-   ```
-
-## コスト最適化
-
-### Lambda料金
-- 実行時間: 約30秒/回
-- メモリ: 1024MB
-- 月間実行回数: 30回（日次）
-- 推定月額: $0.20
-
-### S3料金
-- ストレージ: 約1MB/月
-- 推定月額: $0.01
-
-### 節約のポイント
-- 不要なログの削除（14日保持）
-- メモリサイズの最適化
-- 実行頻度の調整
-
 ## セキュリティ
 
 ### IAM権限
@@ -238,18 +142,13 @@ aws s3 cp s3://ishifuku-gold-data-dev/gold_prices_$(date +%Y%m%d).csv ./
 
 ## 監視・アラート
 
-### CloudWatch アラーム
-- エラー率 > 0%でアラート
-- 実行時間 > 4分でアラート
-- メモリ使用率 > 90%でアラート
+このプロジェクトはtemplate.yamlによって、監視と通知の仕組みが自動で構築されます。
 
-### 通知設定
-```bash
-# SNSトピック作成
-aws sns create-topic --name ishifuku-alerts
+1. 成功通知 (S3 -> EventBridge -> SNS)
+    - 仕組み: S3バケットへのファイル保存が成功すると、そのイベントがAmazon EventBridgeに送信され、SNSトピックを通じて通知が発行されます。
+    - 設定: デプロイ後、AWSコンソールでishifuku-scraper-success-notifications-devというSNSトピックに自分のEメールアドレスを**サブスクライブ（購読登録）**してください。
 
-# アラームとの連携
-aws cloudwatch put-metric-alarm \
-    --alarm-name ishifuku-errors \
-    --alarm-actions arn:aws:sns:ap-northeast-1:123456789012:ishifuku-alerts
+2. エラー監視 (CloudWatch Alarm)
+    - 仕組み: Lambda関数でエラーが発生すると、CloudWatch Alarmが発動します。
+    - 設定: template.yamlでScrapingErrorAlarmが定義されています。このアラームに通知先を設定するには、AlarmActionsプロパティを追加し、通知用のSNSトピック（別途作成）のARNを指定します。
 ```
