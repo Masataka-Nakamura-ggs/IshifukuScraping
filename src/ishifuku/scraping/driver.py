@@ -111,9 +111,8 @@ class LambdaChromeDriverFactory(ChromeDriverFactory):
                     str(os.listdir("/opt")) if os.path.exists("/opt") else "N/A"
                 )
                 raise FileNotFoundError(
-                    f"'/opt'内で'chrome'または'headless-chromium'が見つかりません。/optの内容: {
-                        opt_content
-                    }"
+                    f"'/opt'内で'chrome'または'headless-chromium'が見つかりません。"
+                    f"/optの内容: {opt_content}"
                 )
 
             chrome_options.binary_location = chrome_path
