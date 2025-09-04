@@ -136,16 +136,18 @@ class GoldPriceScraper:
                 if hasattr(self.storage, "create_empty_file"):
                     self.storage.create_empty_file(date_for_filename)
                 else:
-                    # CSVStorageの場合の処理
-                    from .storage import create_empty_csv
-
-                    filename = self.config.storage.get_csv_filename(date_for_filename)
-                    create_empty_csv(filename)
-            except Exception as ex_inner:
-                log_error(
-                    f"フォールバックの空ファイル作成に失敗しました: {ex_inner}",
-                    ex_inner,
-                )
+                    # S3Storage等に上記メソッドがない場合のフォールバック処理として、
+                    # Lambda用の設定を使って/tmp以下にCSVの空ファイルを作成する
+                    log_info("フォールバック: /tmpに空のCSVファイルを作成します")
+                    # self.config.storageにはLambda用の設定が含まれている
+                    csv_storage_fallback = create_csv_storage(self.config.storage)
+                    csv_storage_fallback.create_empty_file(date_for_filename)
+            except Exception as create_err:
+                # 空ファイル作成もエラーの場合はログに残して無視
+                log_error(f"空ファイルの作成に失敗しました: {create_err}", create_err)
+                pass
+            except Exception:
+                pass  # 空ファイル作成もエラーの場合は無視
 
             result = {
                 "success": False,

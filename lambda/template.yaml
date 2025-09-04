@@ -1,0 +1,294 @@
+#--- AWS CloudFormationテンプレートのバージョン (固定値) ---
+AWSTemplateFormatVersion: '2010-09-09'
+#--- AWS SAM (Serverless Application Model) を使用するための宣言 ---
+# これにより、AWS::Serverless::* のような簡略化されたリソースタイプが使えるようになります
+Transform: AWS::Serverless-2016-10-31
+#--- このテンプレートの説明 ---
+Description: 石福金属興業 金価格スクレイピング Lambda関数
+
+#================================================================================
+# パラメータセクション
+# sam deploy実行時に外部から値を渡すことができる変数
+#================================================================================
+Parameters:
+  # デプロイ環境を指定するパラメータ (dev, staging, prod)
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: デプロイメント環境
+  
+  # CSVファイルを保存するS3バケットのベース名を指定するパラメータ
+  # 注: S3バケット名は全世界でユニークである必要があります
+  S3BucketName:
+    Type: String
+    Default: ishifuku-gold-data
+    Description: CSVファイルを保存するS3バケット名
+    
+  # スクレイピングに使用するChrome Lambda LayerのARNを指定するパラメータ
+  ChromeLayerArn:
+    Type: String
+    Default: arn:aws:lambda:ap-northeast-1:739967987319:layer:chrome-aws-lambda:44
+    Description: Chrome Lambda Layer ARN
+
+#================================================================================
+# グローバルセクション
+# このテンプレート内の全てのAWS::Serverless::Functionに適用される共通設定
+#================================================================================
+Globals:
+  Function:
+    # Lambda関数のタイムアウト時間 (秒)
+    Timeout: 300
+    # Lambda関数に割り当てるメモリサイズ (MB)
+    MemorySize: 1024
+    # Lambda関数のランタイム (実行環境)
+    Runtime: python3.9
+    # すべての関数に共通で設定する環境変数
+    Environment:
+      Variables:
+        LOG_LEVEL: INFO
+
+#================================================================================
+# リソースセクション
+# このテンプレートで作成・管理するAWSリソースを定義
+#================================================================================
+Resources:
+  # Lambda関数
+  GoldScrapingFunction:
+    # SAMが提供するLambda関数のリソースタイプ
+    Type: AWS::Serverless::Function
+    Properties:
+      # Lambda関数の名前を動的に生成 (例: ishifuku-scraper-dev)
+      FunctionName: !Sub "ishifuku-scraper-${Environment}"
+    
+      # Lambda関数のソースコードが格納されているディレクトリのパス
+      CodeUri: ../src
+      # Lambdaが実行するハンドラ関数を指定 (ファイル名.関数名)
+      Handler: main_lambda.lambda_handler
+      Description: "石福金属興業から金価格を取得するスクレイピング関数"
+      # Lambda関数にアタッチするレイヤー
+      Layers:
+        - !Ref ChromeLayerArn
+      # このLambda関数に設定する環境変数
+      Environment:
+        Variables:
+          # S3バケット名を動的に生成して環境変数として渡す
+          S3_BUCKET_NAME: !Sub "${S3BucketName}-${Environment}"
+      # このLambda関数に付与するIAMポリシー (権限)
+      Policies:
+        # 指定したS3バケットへの書き込み権限
+        - S3WritePolicy:
+            BucketName: !Sub "${S3BucketName}-${Environment}"
+        # 指定したS3バケットへの読み取り権限
+        - S3ReadPolicy:
+            BucketName: !Sub "${S3BucketName}-${Environment}"
+        # CloudWatch Logsへのフルアクセス権限 (ログ出力のため)
+        - CloudWatchLogsFullAccess
+      # Lambda関数を起動するトリガー (イベントソース)
+      Events:
+        #--- トリガー1: 定期実行 (Amazon EventBridge) ---
+        ScheduledScraping:
+          # EventBridge (CloudWatch Events) によるスケジュール実行
+          Type: Schedule
+          Properties:
+            # 実行スケジュールをcron形式で指定 (UTC 00:00 = 日本時間 09:00)
+            Schedule: cron(0 0 * * ? *)
+            Description: "毎日午前9時に金価格をスクレイピング"
+            # このスケジュールを有効にする
+            Enabled: true
+        #--- トリガー2: API Gateway経由での手動実行 ---
+        ApiScraping:
+          # API Gatewayからのリクエストで実行
+          Type: Api
+          Properties:
+            # APIのエンドポイントパス
+            Path: /scrape
+            # HTTPメソッド
+            Method: get
+            # 連携するAPI Gatewayリソースを参照
+            RestApiId: !Ref ScrapingApi
+
+  #----------------------------------------------------------------
+  # API Gateway
+  #----------------------------------------------------------------
+  ScrapingApi:
+    # SAMが提供するAPI Gatewayのリソースタイプ
+    Type: AWS::Serverless::Api
+    Properties:
+      # API Gatewayの名前を動的に生成
+      Name: !Sub "ishifuku-scraping-api-${Environment}"
+      # デプロイされるステージ名 (dev, staging, prod)
+      StageName: !Ref Environment
+      # CORS (Cross-Origin Resource Sharing) の設定
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'content-type'"
+        # すべてのオリジンからのアクセスを許可
+        AllowOrigin: "'*'"
+      # APIの定義をSwagger/OpenAPI形式で記述
+      DefinitionBody:
+        swagger: '2.0'
+        info:
+          title: !Sub "Ishifuku Scraping API - ${Environment}"
+          version: '1.0'
+        paths:
+          /scrape:
+            get:
+              summary: "金価格のスクレイピングを実行"
+              produces:
+                - application/json
+              responses:
+                200:
+                  description: "スクレイピング成功"
+                500:
+                  description: "スクレイピング失敗"
+              # API Gatewayとバックエンドサービス (Lambda) の統合設定
+              x-amazon-apigateway-integration:
+                # Lambdaプロキシ統合
+                type: aws_proxy
+                # API GatewayからLambdaを呼び出す際はPOSTメソッド
+                httpMethod: POST
+                # 連携先のLambda関数をARNで指定
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GoldScrapingFunction.Arn}/invocations"
+
+  #----------------------------------------------------------------
+  # S3バケット
+  #----------------------------------------------------------------
+  GoldDataBucket:
+    # S3バケットリソース
+    Type: AWS::S3::Bucket
+    Properties:
+      # S3バケットの名前を動的に生成
+      BucketName: !Sub "${S3BucketName}-${Environment}"
+      VersioningConfiguration:
+        # バケットのバージョニングを有効化 (誤削除からの復旧などに役立つ)
+        Status: Enabled
+      # ライフサイクル設定 (ストレージコスト削減のため)
+      LifecycleConfiguration:
+        Rules:
+          # 古いバージョンのオブジェクトを30日後に削除
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+          # 30日経過したオブジェクトを低コストなストレージクラス (STANDARD_IA) に移行
+          - Id: TransitionToIA
+            Status: Enabled
+            TransitionInDays: 30
+            StorageClass: STANDARD_IA
+      # パブリックアクセスをすべてブロックするセキュリティ設定
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      # S3イベント通知設定
+      # S3からのイベント通知をEventBridgeに送信するよう設定
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+
+  #----------------------------------------------------------------
+  # CloudWatch Logs
+  #----------------------------------------------------------------
+  ScrapingLogGroup:
+    # CloudWatchのロググループリソース
+    Type: AWS::Logs::LogGroup
+    Properties:
+      # Lambda関数が出力するログのグループ名を指定
+      LogGroupName: !Sub "/aws/lambda/ishifuku-scraper-${Environment}"
+      # ログの保持期間を14日に設定 (コスト節約のため)
+      RetentionInDays: 14
+
+  #----------------------------------------------------------------
+  # CloudWatch Alarm (エラー監視)
+  #----------------------------------------------------------------
+  ScrapingErrorAlarm:
+    # CloudWatchのアラームリソース
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "ishifuku-scraper-errors-${Environment}"
+      AlarmDescription: "スクレイピング関数のエラー監視"
+      # 監視するメトリクス
+      MetricName: Errors
+      # メトリクスの名前空間
+      Namespace: AWS/Lambda
+      # 統計方法 (合計)
+      Statistic: Sum
+      # 監視期間 (5分)
+      Period: 300
+      # 評価期間の数 (1回)
+      EvaluationPeriods: 1
+      # 閾値: 5分間のエラー合計数が1以上になったらアラーム発動
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # アラームの対象を特定のLambda関数に絞り込む
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref GoldScrapingFunction
+      # データポイントがない場合の挙動 (notBreaching = アラーム状態にしない)
+      TreatMissingData: notBreaching
+
+  #----------------------------------------------------------------
+  # SNSトピック (成功通知用)
+  #----------------------------------------------------------------
+  SuccessNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub "ishifuku-scraper-success-notifications-${Environment}"
+      TopicName: !Sub "ishifuku-scraper-success-notifications-${Environment}"
+
+  #----------------------------------------------------------------
+  # EventBridgeルール (S3オブジェクト作成を検知)
+  #----------------------------------------------------------------
+  S3ObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "S3バケットへのオブジェクト作成を検知しSNSに通知するルール"
+      # イベントパターン (どのイベントを検知するかの定義)
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              # GoldDataBucketが作成するバケット名を指定
+              - !Ref GoldDataBucket
+      # ターゲット (検知したイベントをどこに送るかの定義)
+      Targets:
+        - Arn: !Ref SuccessNotificationTopic
+          Id: "SnsTarget"
+
+#================================================================================
+# アウトプットセクション
+# デプロイ完了後に表示される情報。他のスタックから参照することも可能
+#================================================================================
+Outputs:
+  # 作成されたLambda関数のARN
+  GoldScrapingFunctionArn:
+    Description: "Lambda関数のARN"
+    Value: !GetAtt GoldScrapingFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-function-arn"
+      
+  # 作成されたS3バケットの名前
+  S3BucketName:
+    Description: "CSVファイルを保存するS3バケット名"
+    Value: !Ref GoldDataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-bucket-name"
+      
+  # 手動実行用のAPI GatewayのURL
+  ApiUrl:
+    Description: "手動実行用のAPI URL"
+    Value: !Sub "https://${ScrapingApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/scrape"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-url"
+      
+  # 作成されたCloudWatch Logsのロググループ名
+  LogGroupName:
+    Description: "CloudWatch ロググループ名"
+    Value: !Ref ScrapingLogGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-log-group"

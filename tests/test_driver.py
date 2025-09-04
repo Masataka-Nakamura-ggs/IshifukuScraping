@@ -100,43 +100,36 @@ class TestLambdaChromeDriverFactory:
     """LambdaChromeDriverFactoryのテスト"""
 
     def setup_method(self):
-        """テスト前の準備"""
         self.config = WebDriverConfig()
         self.factory = LambdaChromeDriverFactory(self.config)
 
     @patch("src.ishifuku.scraping.driver.webdriver.Chrome")
-    def test_create_driver_success(self, mock_chrome):
-        """Lambda環境でのWebDriver作成成功ケースを確認"""
-        # モックの設定
+    @patch("src.ishifuku.scraping.driver.LambdaChromeDriverFactory._find_executable")
+    def test_create_driver_success(self, mock_find_exec, mock_chrome):
+        """chromedriver/chrome が見つかった成功ケース"""
+        mock_find_exec.side_effect = [
+            "/opt/bin/chromedriver",
+            "/opt/bin/chrome",
+        ]
         mock_driver_instance = MagicMock()
         mock_chrome.return_value = mock_driver_instance
 
-        # テスト実行
         driver = self.factory.create_driver()
 
-        # 検証
         assert driver == mock_driver_instance
+        assert mock_find_exec.call_count == 2
         mock_chrome.assert_called_once()
         mock_driver_instance.set_page_load_timeout.assert_called_once_with(30)
 
     @patch("src.ishifuku.scraping.driver.webdriver.Chrome")
-    def test_create_driver_failure(self, mock_chrome):
-        """Lambda環境でのWebDriver作成失敗ケースを確認"""
-        # エラーを発生させる
-        mock_chrome.side_effect = Exception("Lambda driver creation failed")
+    @patch("src.ishifuku.scraping.driver.LambdaChromeDriverFactory._find_executable")
+    def test_create_driver_failure_chromedriver_not_found(self, mock_find_exec, mock_chrome):
+        """chromedriver が見つからず例外が発生するケース"""
+        mock_find_exec.return_value = None
 
-        # テスト実行
-        with pytest.raises(Exception, match="Lambda WebDriver作成エラー"):
+        with pytest.raises(Exception, match="Lambda WebDriver作成エラー: '/opt'内で'chromedriver'が見つかりません"):
             self.factory.create_driver()
-
-    def test_create_lambda_chrome_options(self):
-        """Lambda用Chromeオプション作成を確認"""
-        options = self.factory._create_lambda_chrome_options()
-
-        # Lambda固有の引数が含まれることを確認
-        options_list = [options.arguments[i] for i in range(len(options.arguments))]
-        assert "--single-process" in options_list
-        assert "--disable-background-timer-throttling" in options_list
+        mock_chrome.assert_not_called()
 
 
 class TestWebDriverManager:

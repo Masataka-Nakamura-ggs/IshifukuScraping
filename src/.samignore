@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# egg-info
+ishifuku_gold_scraper.egg-info/
+
+# Local files and results
+main_local.py
+logs/
+result/

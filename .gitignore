@@ -227,3 +227,6 @@ htmlcov*/
 
 # Chrome driver cache
 .wdm/
+
+# Zip file
+*.zip

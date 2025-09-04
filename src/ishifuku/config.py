@@ -136,6 +136,10 @@ class ApplicationConfig:
         # S3バケット名を環境変数から取得
         self.storage.s3_bucket_name = os.getenv("S3_BUCKET_NAME")
 
+        # Lambdaでは/tmpディレクトリのみ書き込み可能
+        self.storage.result_dir = "/tmp/result"
+        self.storage.logs_dir = "/tmp/logs"
+
         # Lambda用のWebDriver設定
         self.webdriver.chrome_arguments.extend(
             [

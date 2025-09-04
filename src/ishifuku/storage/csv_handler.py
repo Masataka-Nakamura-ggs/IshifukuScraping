@@ -69,8 +69,8 @@ class CSVStorage(DataStorage):
             filename = self.config.get_csv_filename(date_for_filename)
             filepath = os.path.join(self.config.result_dir, filename)
 
-            # CSVファイルに保存
-            with open(filepath, "w", newline="", encoding="utf-8") as csvfile:
+            # CSVファイルに保存（追記モード）
+            with open(filepath, "a", newline="", encoding="utf-8") as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(
                     [data["date_str"], data["gold_price"], data["datetime_str"]]
