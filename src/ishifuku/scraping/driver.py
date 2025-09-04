@@ -185,8 +185,11 @@ class WebDriverManager:
             if elements:
                 href = elements[0].get_attribute("href")
                 return str(href) if href else None
-        except Exception:
-            pass
+        except Exception as ex_inner:
+            log_error(
+                f"XPathで要素を検索してhref属性を取得するのに失敗しました: {ex_inner}",
+                ex_inner,
+            )
         return None
 
     def close(self) -> None:

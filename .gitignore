@@ -221,6 +221,10 @@ logs/
 *.log
 *.csv
 
+# Test results
+test-results-*/
+htmlcov*/
+
 # Chrome driver cache
 .wdm/
 
