@@ -139,7 +139,7 @@ class ApplicationConfig:
         # Lambdaでは/tmpディレクトリのみ書き込み可能
         self.storage.result_dir = "/tmp/result"
         self.storage.logs_dir = "/tmp/logs"
-        
+
         # Lambda用のWebDriver設定
         self.webdriver.chrome_arguments.extend(
             [

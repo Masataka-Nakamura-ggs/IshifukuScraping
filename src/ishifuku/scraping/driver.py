@@ -72,7 +72,7 @@ class ChromeDriverFactory(WebDriverFactory):
 class LambdaChromeDriverFactory(ChromeDriverFactory):
     """【Lambda環境用】のChromeDriverファクトリクラス"""
 
-    def _find_executable(self, name: str, search_path: str = '/opt') -> Optional[str]:
+    def _find_executable(self, name: str, search_path: str = "/opt") -> Optional[str]:
         """指定されたパスで実行可能ファイルを再帰的に検索する"""
         for root, dirs, files in os.walk(search_path):
             if name in files:
@@ -89,24 +89,36 @@ class LambdaChromeDriverFactory(ChromeDriverFactory):
         try:
             log_info("Lambda用WebDriverの作成を開始...")
             chrome_options = self._create_chrome_options()
-            
+
             # Lambda Layer内の実行可能ファイルを動的に検索
             log_info("chromedriverを/opt内で検索中...")
-            chromedriver_path = self._find_executable('chromedriver')
-            
+            chromedriver_path = self._find_executable("chromedriver")
+
             log_info("chrome or headless-chromiumを/opt内で検索中...")
-            chrome_path = self._find_executable('chrome') or self._find_executable('headless-chromium')
+            chrome_path = self._find_executable("chrome") or self._find_executable(
+                "headless-chromium"
+            )
 
             if not chromedriver_path:
-                opt_content = str(os.listdir('/opt')) if os.path.exists('/opt') else "N/A"
-                raise FileNotFoundError(f"'/opt'内で'chromedriver'が見つかりません。/optの内容: {opt_content}")
+                opt_content = (
+                    str(os.listdir("/opt")) if os.path.exists("/opt") else "N/A"
+                )
+                raise FileNotFoundError(
+                    f"'/opt'内で'chromedriver'が見つかりません。/optの内容: {opt_content}"
+                )
             if not chrome_path:
-                opt_content = str(os.listdir('/opt')) if os.path.exists('/opt') else "N/A"
-                raise FileNotFoundError(f"'/opt'内で'chrome'または'headless-chromium'が見つかりません。/optの内容: {opt_content}")
+                opt_content = (
+                    str(os.listdir("/opt")) if os.path.exists("/opt") else "N/A"
+                )
+                raise FileNotFoundError(
+                    f"'/opt'内で'chrome'または'headless-chromium'が見つかりません。/optの内容: {
+                        opt_content
+                    }"
+                )
 
             chrome_options.binary_location = chrome_path
             service = Service(executable_path=chromedriver_path)
-            
+
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.set_page_load_timeout(30)
             log_info("Lambda用WebDriverの作成に成功しました")
@@ -115,6 +127,7 @@ class LambdaChromeDriverFactory(ChromeDriverFactory):
         except Exception as e:
             debug_message = f"Lambda WebDriver作成エラー: {e}"
             raise Exception(debug_message) from e
+
 
 class WebDriverManager:
     """WebDriverの管理クラス"""
