@@ -20,7 +20,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
 from ..config import WebDriverConfig
-from ..utils import log_info
+from ..utils import log_error, log_info
 
 
 class WebDriverFactory(ABC):
