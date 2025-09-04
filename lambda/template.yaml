@@ -28,7 +28,7 @@ Parameters:
   # スクレイピングに使用するChrome Lambda LayerのARNを指定するパラメータ
   ChromeLayerArn:
     Type: String
-    Default: arn:aws:lambda:ap-northeast-1:764866452798:layer:chrome-aws-lambda:31
+    Default: arn:aws:lambda:ap-northeast-1:739967987319:layer:chrome-aws-lambda:44
     Description: Chrome Lambda Layer ARN
 
 #================================================================================
