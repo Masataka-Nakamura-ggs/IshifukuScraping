@@ -221,8 +221,7 @@ class MultiProductPriceExtractor:
         self.gold_extractor = GoldPriceExtractor(self.config)
 
     def _is_valid_coin_price(self, price: Optional[int]) -> bool:
-        """コイン価格の妥当性判定
-        """
+        """コイン価格の妥当性判定"""
         if price is None:
             return False
         return 20000 <= price <= 2000000

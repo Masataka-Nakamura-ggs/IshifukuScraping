@@ -7,6 +7,7 @@ AWS Lambda関数のテストケースを提供します。
 """
 
 import json
+from types import SimpleNamespace
 from typing import Any, Dict
 from unittest.mock import Mock, patch
 
@@ -57,12 +58,18 @@ class TestMainLambda:
         mock_create_s3_storage.return_value = mock_storage
 
         mock_scraper_instance = mock_GoldPriceScraper.return_value
-        mock_scraper_instance.scrape_and_save.return_value = {
+        mock_scraper_instance.scrape_all_and_save.return_value = {
             "success": True,
-            "gold_price": 17530,
-            "datetime_str": "2025-08-21",
+            "filepath": "result/test.csv",
+            "datetime_str": "2025-08-21 10:00:00",
+            "products": [
+                SimpleNamespace(product_name="金", price=17530),
+                SimpleNamespace(
+                    product_name="メイプルリーフ金貨・ウィーン金貨ハーモニー(1oz)",
+                    price=400000,
+                ),
+            ],
         }
-        mock_scraper_instance = mock_GoldPriceScraper.return_value
 
         # テスト実行
         event: Dict[str, Any] = {"test": True}
@@ -71,9 +78,16 @@ class TestMainLambda:
         # 検証
         assert result["statusCode"] == 200
         body = json.loads(result["body"])
-        assert "data" in body
         assert body["success"] is True
         assert "timestamp" in body
+        assert "products" in body
+        assert isinstance(body["products"], list)
+        assert len(body["products"]) >= 2
+        assert body["products"][0]["product_name"] == "金"
+
+        logger_mock = mock_setup_logging.return_value
+        info_messages = [str(c.args[0]) for c in logger_mock.info.call_args_list]
+        assert any("取得商品数:" in msg for msg in info_messages)
 
         # モックが適切に呼ばれたことを確認
         mock_setup_logging.assert_called_once()
@@ -82,7 +96,7 @@ class TestMainLambda:
         mock_GoldPriceScraper.assert_called_once_with(
             config=mock_config, storage=mock_storage
         )
-        mock_scraper_instance.scrape_and_save.assert_called_once()
+        mock_scraper_instance.scrape_all_and_save.assert_called_once()
 
     @patch("src.main_lambda.GoldPriceScraper")
     @patch("src.main_lambda.create_s3_storage")
@@ -113,7 +127,7 @@ class TestMainLambda:
         mock_create_s3_storage.return_value = mock_storage
 
         mock_scraper_instance = mock_GoldPriceScraper.return_value
-        mock_scraper_instance.scrape_and_save.return_value = {
+        mock_scraper_instance.scrape_all_and_save.return_value = {
             "success": False,
             "error": "スクレイピングに失敗しました",
         }
@@ -167,7 +181,13 @@ class TestMainLambda:
         with patch("src.main_lambda.lambda_handler") as mock_lambda_handler:
             mock_lambda_handler.return_value = {
                 "statusCode": 200,
-                "body": json.dumps({"success": True, "data": {"gold_price": 17530}}),
+                "body": json.dumps(
+                    {
+                        "success": True,
+                        "timestamp": "2025-08-21 10:00:00",
+                        "products": [{"product_name": "金", "price": 17530}],
+                    }
+                ),
             }
 
             # テスト実行（例外なく完了することを確認）

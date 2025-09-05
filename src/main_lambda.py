@@ -8,7 +8,7 @@ AWS Lambda向けメインスクリプト
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ishifuku import get_config, setup_lambda_logging
 from ishifuku.core import GoldPriceScraper
@@ -50,22 +50,30 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         # スクレイパーを作成
         scraper = GoldPriceScraper(config=config, storage=storage)
 
-        # スクレイピングを実行
-        result = scraper.scrape_and_save()
+        # スクレイピングを実行 (複数商品取得)
+        result = scraper.scrape_all_and_save()
 
         if result.get("success"):
-            logger.info("✅ Lambda スクレイピング処理が正常に完了しました")
+            products = result.get("products", [])
+            # ProductPrice オブジェクト -> dict に変換（__dict__ で十分 / dataclassでない前提）
+            product_list: List[Dict[str, Any]] = [p.__dict__ for p in products]
+            success_count = sum(1 for p in product_list if p.get("price") is not None)
 
-            # 結果を返す
+            logger.info(
+                f"✅ Lambda スクレイピング処理が正常に完了しました"
+                f"(取得商品数: {success_count}/{len(product_list)})"
+            )
+
+            # 結果を返す（products を返却）
             return {
                 "statusCode": 200,
                 "body": json.dumps(
                     {
                         "success": True,
                         "message": "スクレイピングが正常に完了しました",
-                        "data": result,
+                        "filepath": result.get("filepath"),
                         "timestamp": result.get("datetime_str"),
-                        "gold_price": result.get("gold_price"),
+                        "products": product_list,
                     },
                     ensure_ascii=False,
                 ),
@@ -133,8 +141,11 @@ def main() -> None:
     print(f"メッセージ: {body.get('message')}")
 
     if body.get("success"):
-        print(f"金価格: {body.get('gold_price')}")
         print(f"タイムスタンプ: {body.get('timestamp')}")
+        products = body.get("products", [])
+        print("取得商品一覧:")
+        for p in products:
+            print(f" - {p.get('product_name')}: {p.get('price')}")
 
 
 if __name__ == "__main__":
