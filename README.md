@@ -6,7 +6,7 @@
 [![Code Style: black](https://img.shields.io/badge/code%20style-black-black.svg)](https://github.com/psf/black)
 [![Type Check: mypy](https://img.shields.io/badge/type%20check-mypy-blue.svg)](http://mypy-lang.org/)
 
-石福金属興業のウェブサイトから金の小売価格を自動取得し、CSVファイルに保存するPythonツールです。
+石福金属興業のウェブサイトから金および地金型コイン（メイプルリーフ金貨・ウィーン金貨ハーモニー）の小売価格を自動取得し、CSVファイルに保存するPythonツールです。単一金価格取得に加えて複数商品（1商品1行）出力フォーマットをサポートしました。
 
 ## 📋 主要機能
 
@@ -84,10 +84,17 @@ python src/main_local.py --log-level DEBUG
 
 ### 3. 実行結果
 
+単一金価格（従来互換）:
 ```
-result/ishihuku-gold-YYYYMMDD.csv  # 価格データ
-logs/ishifuku_YYYYMMDD.log         # 実行ログ
+result/ishihuku-gold-YYYYMMDD.csv  # 金のみ 3列 (日付, 金価格, 取得日時)
 ```
+
+複数商品価格（新フォーマット）:
+```
+result/ishihuku-price-YYYYMMDD.csv # 1商品1行 4列 (日付, 商品名, 小売価格, 取得日時)
+```
+
+商品名例: `金`, `メイプルリーフ金貨・ウィーン金貨ハーモニー(1oz)`, `(1/2oz)` など。
 
 ## 🧪 テスト実行
 
@@ -154,8 +161,9 @@ cp -r src/ lambda_package/
 ### ログファイル
 
 ```bash
-logs/ishifuku_YYYYMMDD.log  # 日次実行ログ
-result/ishihuku-gold-YYYYMMDD.csv  # 価格データ
+logs/ishifuku_YYYYMMDD.log          # 日次実行ログ
+result/ishihuku-gold-YYYYMMDD.csv   # 従来フォーマット (必要な場合)
+result/ishihuku-price-YYYYMMDD.csv  # 複数商品フォーマット
 ```
 
 **注意**: CloudWatchアラートやSlack通知などの高度な監視機能は現在未実装です。
@@ -181,14 +189,17 @@ class ScrapingConfig:
 
 ```python
 class StorageConfig:
-    output_dir = "result"
-    csv_filename_template = "ishihuku-gold-{date}.csv"
-    log_dir = "logs"
+    result_dir = "result"
+    csv_filename_template = "ishihuku-gold-{date}.csv"          # 旧フォーマット
+    csv_filename_price_template = "ishihuku-price-{date}.csv"    # 新フォーマット
+    logs_dir = "logs"
+
+    def get_price_csv_filename(self, date: str) -> str: ...
 ```
 
 ## 📈 パフォーマンス
 
-現在は基本的な実行時間の記録のみ実装されています。
+現在は基本的な実行時間の記録のみ実装されています。複数商品取得により1回のアクセスで金＋コイン価格をまとめて取得します。
 
 - **実行時間**: 12-18秒（ネットワーク状況による）
 - **メモリ使用量**: 約50MB（Chrome WebDriverを含む）

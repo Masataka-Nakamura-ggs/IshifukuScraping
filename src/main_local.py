@@ -5,6 +5,7 @@
 
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -22,28 +23,38 @@ sys.path.insert(0, str(project_root))
 
 def main() -> None:
     """メイン処理"""
-    # 設定を取得
-    config = get_config("local")
+    parser = argparse.ArgumentParser(description="Ishifuku Scraper")
+    parser.add_argument(
+        "--multi",
+        action="store_true",
+        help="金 + コイン各サイズを取得し新フォーマットCSVへ保存",
+    )
+    args = parser.parse_args()
 
-    # ログ設定を初期化
+    config = get_config("local")
     setup_logging(config.storage)
 
     try:
-        print("石福金属興業から金の価格を取得します...")
-
-        # スクレイパーを作成して実行
+        mode_msg = "複数商品（金+コイン）" if args.multi else "金"
+        print(f"石福金属興業から{mode_msg}の価格を取得します...")
         with create_gold_price_scraper("local", config) as scraper:
-            result = scraper.scrape_and_save()
+            if args.multi:
+                result = scraper.scrape_all_and_save()
+            else:
+                result = scraper.scrape_and_save()
 
-        if result["success"]:
+        if result.get("success"):
             print("処理が正常に完了しました。")
             print(f"取得日時: {result['datetime_str']}")
-            print(f"金の小売価格: {result['gold_price']}円/g")
+            if args.multi:
+                for p in result["products"]:
+                    print(f" - {p.product_name}: {p.price}")
+            else:
+                print(f"金の小売価格: {result['gold_price']}円/g")
             print(f"保存ファイル: {result['filepath']}")
         else:
-            print(f"エラーが発生しました: {result['error']}")
+            print(f"エラーが発生しました: {result.get('error')}")
             print("エラー処理が完了しました。")
-
     except KeyboardInterrupt:
         print("\n処理が中断されました。")
         sys.exit(1)

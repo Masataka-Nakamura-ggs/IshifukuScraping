@@ -65,7 +65,7 @@ from ishifuku import get_config
 # ローカル環境設定
 config = get_config("local")
 
-# Lambda環境設定  
+# Lambda環境設定
 config = get_config("lambda")
 ```
 
@@ -117,6 +117,11 @@ from ishifuku.scraping import create_price_extractor
 
 extractor = create_price_extractor()
 price = extractor.extract_price(html)
+
+# 追加: 複数商品抽出
+from ishifuku.scraping.extractor import MultiProductPriceExtractor
+multi_extractor = MultiProductPriceExtractor()
+products = multi_extractor.extract(html)  # list[ProductPrice]
 ```
 
 ### 4. ストレージ機能 (`storage/`)
@@ -127,6 +132,16 @@ from ishifuku.storage import create_csv_storage
 
 storage = create_csv_storage()
 filepath = storage.save(data)
+
+# 追加: 複数商品フォーマット (date, product_name, price, datetime)
+storage.save({
+    "date_str": "2025-09-04",
+    "product_name": "メイプルリーフ金貨・ウィーン金貨ハーモニー(1oz)",
+    "price": 350000,
+    "datetime_str": "2025-09-04 10:00:00",
+    "date_for_filename": "20250904",
+    "multi_product": True,
+})
 ```
 
 #### S3保存 (`s3_handler.py`) 
@@ -166,6 +181,13 @@ from ishifuku.core import scrape_gold_price
 
 price = scrape_gold_price()
 print(f"金価格: {price}円/g")
+
+# 追加: 複数商品を取得して保存
+from ishifuku.core import create_gold_price_scraper
+with create_gold_price_scraper() as scraper:
+    result = scraper.scrape_all_and_save()
+    for p in result["products"]:
+        print(p.product_name, p.price)
 ```
 
 ### 詳細制御
@@ -215,6 +237,11 @@ from scrape_ishifuku import scrape_gold_price, save_to_csv, get_current_datetime
 price = scrape_gold_price()
 date_str, datetime_str, filename_date = get_current_datetime()
 save_to_csv(date_str, price, datetime_str, f"gold-{filename_date}.csv")
+
+# 新フォーマットを利用する場合（新API）
+from ishifuku.core import create_gold_price_scraper
+with create_gold_price_scraper() as scraper:
+    scraper.scrape_all_and_save()
 ```
 
 ## 実行方法
@@ -261,6 +288,11 @@ class NewSitePriceExtractor(PriceExtractor):
     def extract_price(self, html: str) -> Optional[int]:
         # サイト固有の実装
         pass
+
+# 新しい複数商品抽出を追加する例
+class AnotherMultiProductExtractor(MultiProductPriceExtractor):
+    # サイト固有のサイズラベルや検出ロジックをオーバーライド
+    pass
 ```
 
 ### 新しいストレージ追加

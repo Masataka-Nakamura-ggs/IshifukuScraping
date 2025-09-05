@@ -16,6 +16,7 @@ from .config import (
     get_storage_config,
     get_webdriver_config,
 )
+from .models import ProductPrice
 from .scraping import (
     ChromeDriverFactory,
     GoldPriceExtractor,
@@ -87,6 +88,8 @@ __all__ = [
     "create_legacy_csv_handler",
     "save_to_csv",
     "create_empty_csv",
+    # モデル
+    "ProductPrice",
     # ユーティリティ関連
     "get_current_datetime",
     "get_current_datetime_string",

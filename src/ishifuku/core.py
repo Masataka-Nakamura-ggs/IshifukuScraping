@@ -12,12 +12,14 @@ from typing import Any, Optional
 from selenium.webdriver.common.by import By
 
 from .config import ApplicationConfig
+from .models import ProductPrice
 from .scraping import (
     WebDriverManager,
     create_html_parser,
     create_price_extractor,
     create_webdriver_manager,
 )
+from .scraping.extractor import MultiProductPriceExtractor
 from .storage import DataStorage, create_csv_storage
 from .utils import get_current_datetime, log_error, log_info
 
@@ -51,6 +53,8 @@ class GoldPriceScraper:
         # 各種ヘルパーを作成
         self.html_parser = create_html_parser(self.config.scraping)
         self.price_extractor = create_price_extractor(self.config.scraping)
+        # 複数商品抽出用
+        self.multi_price_extractor = MultiProductPriceExtractor(self.config.scraping)
 
     def scrape_gold_price(self) -> int:
         """
@@ -158,6 +162,89 @@ class GoldPriceScraper:
 
             log_error(f"スクレイピング処理が失敗しました: {e}", e)
             return result
+
+    # ------------------------------------------------------------------
+    # 追加: 複数商品（地金 + コイン各サイズ）スクレイピング機能
+    # ------------------------------------------------------------------
+    def scrape_all_product_prices(self) -> list[ProductPrice]:
+        """金 + コイン各サイズの小売価格をまとめて取得
+
+        Returns:
+            list[ProductPrice]: 抽出結果。price が None の要素は取得失敗を表す。
+        Raises:
+            Exception: 全ての商品の取得に失敗した場合
+        """
+        log_info("複数商品価格スクレイピングを開始")
+        self._navigate_to_top_page()
+        price_url = self._find_price_page_url()
+        self._navigate_to_price_page(price_url)
+        html = self.webdriver_manager.get_page_source()
+        products = self.multi_price_extractor.extract(html)
+
+        success_count = sum(1 for p in products if p.price is not None)
+        if success_count == 0:
+            self._output_debug_info(html)
+            raise Exception("全ての商品の価格取得に失敗しました")
+
+        for p in products:
+            if p.price is not None:
+                log_info(f"[SUCCESS] {p.product_name} => {p.price}")
+            else:
+                log_info(f"[MISS] {p.product_name} => None")
+
+        log_info(f"商品価格取得サマリ: 成功 {success_count} / {len(products)}")
+        return products
+
+    def scrape_all_and_save(self) -> dict:
+        """複数商品価格を取得してCSVへ追記保存
+
+        Returns:
+            dict: 実行結果
+                - success: 成否
+                - filepath: 保存ファイルパス（少なくとも1件成功時）
+                - products: 取得結果(list[ProductPrice])
+                - error: 失敗時のメッセージ
+        """
+        date_str, datetime_str, date_for_filename = get_current_datetime()
+        try:
+            products = self.scrape_all_product_prices()
+            saved_file: Optional[str] = None
+            for p in products:
+                if p.price is None:
+                    continue  # 失敗行は出力しない
+                data = {
+                    "date_str": date_str,
+                    "product_name": p.product_name,
+                    "price": p.price,
+                    "datetime_str": datetime_str,
+                    "date_for_filename": date_for_filename,
+                    "multi_product": True,
+                }
+                saved_file = self.storage.save(data)
+
+            return {
+                "success": True,
+                "filepath": saved_file,
+                "products": products,
+                "date_str": date_str,
+                "datetime_str": datetime_str,
+            }
+        except Exception as e:
+            log_error(f"複数商品スクレイピングエラー: {e}", e)
+            # 空ファイル生成（新フォーマット優先）
+            try:
+                if hasattr(self.storage, "create_empty_price_file"):
+                    self.storage.create_empty_price_file(date_for_filename)
+                elif hasattr(self.storage, "create_empty_file"):
+                    self.storage.create_empty_file(date_for_filename)
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "error": str(e),
+                "date_str": date_str,
+                "datetime_str": datetime_str,
+            }
 
     def _navigate_to_top_page(self) -> None:
         """トップページに移動"""

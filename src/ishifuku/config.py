@@ -97,6 +97,8 @@ class StorageConfig:
 
     # ファイル名設定
     csv_filename_template: str = "ishihuku-gold-{date}.csv"
+    # 新フォーマット（複数商品: 金 + コイン）用のCSVテンプレート
+    csv_filename_price_template: str = "ishihuku-price-{date}.csv"
     log_filename_template: str = "scraping_{level}_{date}.log"
 
     # S3設定（Lambda用）
@@ -106,6 +108,10 @@ class StorageConfig:
     def get_csv_filename(self, date_str: str) -> str:
         """CSVファイル名を生成"""
         return self.csv_filename_template.format(date=date_str)
+
+    def get_price_csv_filename(self, date_str: str) -> str:
+        """マルチ商品価格CSVファイル名を生成"""
+        return self.csv_filename_price_template.format(date=date_str)
 
     def get_log_filename(self, level: str, date_str: str) -> str:
         """ログファイル名を生成"""

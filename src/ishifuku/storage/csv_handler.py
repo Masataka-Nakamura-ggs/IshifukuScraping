@@ -64,17 +64,35 @@ class CSVStorage(DataStorage):
             # resultフォルダが存在しない場合は作成
             os.makedirs(self.config.result_dir, exist_ok=True)
 
-            # ファイル名を生成
+            # マルチ商品フラグ
+            is_multi = bool(data.get("multi_product"))
+
             date_for_filename = data.get("date_for_filename", "unknown")
-            filename = self.config.get_csv_filename(date_for_filename)
+            # ファイル名を生成（マルチ商品時は新フォーマット）
+            if is_multi and hasattr(self.config, "get_price_csv_filename"):
+                filename = self.config.get_price_csv_filename(date_for_filename)
+            else:
+                filename = self.config.get_csv_filename(date_for_filename)
             filepath = os.path.join(self.config.result_dir, filename)
 
             # CSVファイルに保存（追記モード）
             with open(filepath, "a", newline="", encoding="utf-8") as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(
-                    [data["date_str"], data["gold_price"], data["datetime_str"]]
-                )
+                if is_multi:
+                    # 新フォーマット: date, product_name, price, datetime
+                    writer.writerow(
+                        [
+                            data["date_str"],
+                            data.get("product_name", ""),
+                            data.get("price"),
+                            data["datetime_str"],
+                        ]
+                    )
+                else:
+                    # 旧フォーマット互換
+                    writer.writerow(
+                        [data["date_str"], data["gold_price"], data["datetime_str"]]
+                    )
 
             log_info(f"データをCSVファイルに保存しました: {filepath}")
             return filepath
@@ -116,6 +134,29 @@ class CSVStorage(DataStorage):
             error_msg = f"空ファイル作成エラー: {e}"
             log_error(error_msg, e)
             raise Exception(error_msg) from e
+
+    def create_empty_price_file(self, date_for_filename: str) -> str:
+        """マルチ商品用空CSVファイルを作成"""
+        try:
+            os.makedirs(self.config.result_dir, exist_ok=True)
+            filename = self.config.get_price_csv_filename(date_for_filename)
+            filepath = os.path.join(self.config.result_dir, filename)
+            with open(filepath, "w", encoding="utf-8"):
+                pass
+            log_info(f"マルチ商品空のCSVファイルを作成しました: {filepath}")
+            return filepath
+        except Exception as e:
+            error_msg = f"空マルチ商品ファイル作成エラー: {e}"
+            log_error(error_msg, e)
+            raise Exception(error_msg) from e
+
+    def save_products(self, data_list: List[Dict]) -> List[str]:
+        """マルチ商品データの一括保存（成功行のみ想定）"""
+        paths: List[str] = []
+        for d in data_list:
+            d["multi_product"] = True
+            paths.append(self.save(d))
+        return paths
 
     def save_batch(self, data_list: List[Dict]) -> List[str]:
         """
